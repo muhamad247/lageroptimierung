@@ -60,3 +60,9 @@ def eoq(item: Item) -> float:
 def lead_time_demand_sd(item: Item) -> float:
     """σ der Nachfrage während der Lieferzeit, mit Unsicherheit in Nachfrage und Lieferzeit."""
     return float(np.sqrt(item.lead_time * item.demand_variance + item.mean_demand ** 2 * item.lead_time_variance))
+
+
+def reorder_point_normal(item: Item, service_level: float) -> tuple[int, float]:
+    """Meldebestand s = μ·L + z·σ_L unter Normalverteilungsannahme. Gibt (s, Sicherheitsbestand) zurück."""
+    safety = norm.ppf(service_level) * lead_time_demand_sd(item)
+    return int(np.ceil(item.mean_demand * item.lead_time + safety)), float(safety)
