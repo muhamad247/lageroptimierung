@@ -66,3 +66,18 @@ def reorder_point_normal(item: Item, service_level: float) -> tuple[int, float]:
     """Meldebestand s = μ·L + z·σ_L unter Normalverteilungsannahme. Gibt (s, Sicherheitsbestand) zurück."""
     safety = norm.ppf(service_level) * lead_time_demand_sd(item)
     return int(np.ceil(item.mean_demand * item.lead_time + safety)), float(safety)
+
+
+def reorder_point_empirical(item: Item, service_level: float, samples: int = 200_000, seed: int = 0) -> int:
+    """Meldebestand als Quantil der simulierten Nachfrage während der Lieferzeit.
+
+    Braucht keine Normalverteilungsannahme und funktioniert deshalb auch bei
+    sporadischer Nachfrage, wo die Normalverteilung zu wenig Sicherheitsbestand liefert.
+    """
+    rng = np.random.default_rng(seed)
+    lead_times = item.sample_lead_times(samples, rng)
+    total = np.zeros(samples)
+    for L in np.unique(lead_times):
+        mask = lead_times == L
+        total[mask] = item.sample_demand(int(mask.sum()) * int(L), rng).reshape(-1, int(L)).sum(axis=1)
+    return int(np.quantile(total, service_level, method="higher"))
