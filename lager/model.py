@@ -81,3 +81,26 @@ def reorder_point_empirical(item: Item, service_level: float, samples: int = 200
         mask = lead_times == L
         total[mask] = item.sample_demand(int(mask.sum()) * int(L), rng).reshape(-1, int(L)).sum(axis=1)
     return int(np.quantile(total, service_level, method="higher"))
+
+
+def fill_rate_normal(item: Item, reorder_point: float, order_quantity: float) -> float:
+    """Näherung für den Lieferbereitschaftsgrad β über die Standard-Verlustfunktion."""
+    sigma = lead_time_demand_sd(item)
+    z = (reorder_point - item.mean_demand * item.lead_time) / sigma
+    expected_shortage = sigma * (norm.pdf(z) - z * (1 - norm.cdf(z)))
+    return float(1 - expected_shortage / order_quantity)
+
+
+def expected_undershoot(item: Item) -> float:
+    """Wie weit die Bestandsposition im Schnitt unter s liegt, wenn täglich statt laufend geprüft wird.
+
+    Näherung aus der Erneuerungstheorie: E[U] ≈ E[D²] / (2·E[D]) mit der Tagesnachfrage D.
+    Bei 20 Stück pro Tag sind das gut 10 Stück, die in der Lehrbuchformel fehlen.
+    """
+    return (item.demand_variance + item.mean_demand ** 2) / (2 * item.mean_demand)
+
+
+def reorder_point_daily_review(item: Item, service_level: float) -> int:
+    """Wie reorder_point_normal, aber mit Korrektur für den Undershoot bei täglicher Prüfung."""
+    s, _ = reorder_point_normal(item, service_level)
+    return int(np.ceil(s + expected_undershoot(item)))
