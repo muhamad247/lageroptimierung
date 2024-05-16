@@ -64,3 +64,58 @@ class Scenario:
     def draw(cls, item: Item, days: int = 3650, seed: int = 0) -> Scenario:
         rng = np.random.default_rng(seed)
         return cls(item, item.sample_demand(days, rng), item.sample_lead_times(days, rng))
+
+
+def simulate(scenario: Scenario, policy, warmup: int = 60) -> Result:
+    item, demand = scenario.item, scenario.demand
+    days = len(demand)
+    on_hand = float(policy.s + policy.Q if isinstance(policy, SQ) else policy.S)
+    backorder = 0.0
+    arrivals = np.zeros(days + int(scenario.lead_times.max()) + 2)
+    on_order = 0.0
+    unmet = np.zeros(days)
+    rows, orders = [], []
+
+    for day in range(days):
+        received = arrivals[day]
+        on_hand += received
+        on_order -= received
+        served_backlog = min(backorder, on_hand)
+        backorder -= served_backlog
+        on_hand -= served_backlog
+
+        d = demand[day]
+        served = min(d, on_hand)
+        on_hand -= served
+        unmet[day] = d - served
+        backorder += d - served
+
+        qty = policy.order(day, on_hand + on_order - backorder)
+        if qty > 0:
+            lead = int(scenario.lead_times[len(orders)])
+            arrivals[day + lead + 1] += qty  # bestellt am Abend, verfügbar am Morgen nach L Tagen
+            on_order += qty
+            orders.append((day, day + lead + 1))
+        rows.append((day, on_hand, backorder, qty, d, served))
+
+    df = pd.DataFrame(rows, columns=["tag", "lagerbestand", "rueckstand", "bestellung", "nachfrage", "bedient"])
+    measured = df[df["tag"] >= warmup]
+    years = len(measured) / 365
+
+    # Lieferzyklus = Zeit zwischen zwei Wareneingängen. Fehlmengen entstehen immer kurz vor dem nächsten Eingang.
+    arrival_days = sorted(a for _, a in orders if a <= days)
+    cycles = [(a, b) for a, b in zip(arrival_days, arrival_days[1:]) if a >= warmup]
+    stockout = [unmet[a:b].sum() > 0 for a, b in cycles]
+    holding = measured["lagerbestand"].sum() * item.holding_cost_per_day
+    ordering = (measured["bestellung"] > 0).sum() * item.order_cost
+    shortage = (measured["nachfrage"] - measured["bedient"]).sum() * item.shortage_cost
+
+    return Result(
+        days=df,
+        cycle_service_level=1 - float(np.mean(stockout)) if stockout else float("nan"),
+        fill_rate=float(measured["bedient"].sum() / max(measured["nachfrage"].sum(), 1)),
+        avg_on_hand=float(measured["lagerbestand"].mean()),
+        orders_per_year=float((measured["bestellung"] > 0).sum() / years),
+        cost_per_year=float((holding + ordering + shortage) / years),
+        cost_breakdown={"Lager": holding / years, "Bestellung": ordering / years, "Fehlmenge": shortage / years},
+    )
