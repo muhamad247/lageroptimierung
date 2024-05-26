@@ -119,3 +119,14 @@ def simulate(scenario: Scenario, policy, warmup: int = 60) -> Result:
         cost_per_year=float((holding + ordering + shortage) / years),
         cost_breakdown={"Lager": holding / years, "Bestellung": ordering / years, "Fehlmenge": shortage / years},
     )
+
+
+def optimize_sq(scenario: Scenario, s_values, q_values) -> pd.DataFrame:
+    """Kosten für alle Kombinationen von s und Q, sortiert nach Jahreskosten."""
+    rows = []
+    for s in s_values:
+        for q in q_values:
+            r = simulate(scenario, SQ(int(s), int(q)))
+            rows.append({"s": int(s), "Q": int(q), "kosten": r.cost_per_year, "csl": r.cycle_service_level,
+                         "fill_rate": r.fill_rate, "bestand": r.avg_on_hand, **{f"kosten_{k.lower()}": v for k, v in r.cost_breakdown.items()}})
+    return pd.DataFrame(rows).sort_values("kosten").reset_index(drop=True)
