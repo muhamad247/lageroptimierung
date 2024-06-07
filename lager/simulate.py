@@ -130,3 +130,17 @@ def optimize_sq(scenario: Scenario, s_values, q_values) -> pd.DataFrame:
             rows.append({"s": int(s), "Q": int(q), "kosten": r.cost_per_year, "csl": r.cycle_service_level,
                          "fill_rate": r.fill_rate, "bestand": r.avg_on_hand, **{f"kosten_{k.lower()}": v for k, v in r.cost_breakdown.items()}})
     return pd.DataFrame(rows).sort_values("kosten").reset_index(drop=True)
+
+
+def calibrate_reorder_point(scenario: Scenario, Q: int, target: float, start: int = 0, limit: int = 100_000) -> int:
+    """Kleinster Meldebestand, mit dem die Simulation den Ziel-Servicegrad erreicht.
+
+    Braucht keine Verteilungsannahme und berücksichtigt alles, was die Formeln
+    vereinfachen: Undershoot, schiefe Nachfrage, schwankende Lieferzeiten.
+    """
+    s = max(0, start)
+    while s < limit:
+        if simulate(scenario, SQ(s, Q)).cycle_service_level >= target:
+            return s
+        s += 1
+    raise RuntimeError("Ziel-Servicegrad nicht erreichbar")
