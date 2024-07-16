@@ -73,3 +73,25 @@ def test_normal_approximation_is_too_low_for_sporadic_demand():
 def test_fill_rate_exceeds_cycle_service_level():
     r = simulate(Scenario.draw(Item(), days=365 * 10, seed=6), SQ(117, 382))
     assert r.fill_rate > r.cycle_service_level
+
+
+def test_periodic_review_order_up_to_level():
+    sc = Scenario.draw(Item(), days=365 * 10, seed=7)
+    fill = [simulate(sc, RS(14, S)).fill_rate for S in (360, 400, 440)]
+    assert fill[0] < fill[1] < fill[2]
+
+
+def test_optimum_is_inside_the_grid():
+    sc = Scenario.draw(Item(), days=365 * 5, seed=8)
+    table = optimize_sq(sc, range(90, 171, 10), [382])
+    best = table.iloc[0]["s"]
+    assert 90 < best < 170  # Kostenkurve ist U-förmig: zu wenig Bestand kostet Fehlmengen, zu viel Lagerkosten
+
+
+def test_abc_classes_follow_value_shares():
+    c = classify(sample_assortment())
+    share = c.groupby("abc")["verbrauchswert"].sum() / c["verbrauchswert"].sum()
+    assert 0.8 <= share["A"] < 0.9
+    assert share["C"] < 0.06
+    assert set(c["xyz"]) == {"X", "Y", "Z"}
+    assert c["ziel_servicegrad"].notna().all()
