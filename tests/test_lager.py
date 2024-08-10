@@ -95,3 +95,11 @@ def test_abc_classes_follow_value_shares():
     assert share["C"] < 0.06
     assert set(c["xyz"]) == {"X", "Y", "Z"}
     assert c["ziel_servicegrad"].notna().all()
+
+
+def test_streamlit_app_runs():
+    from streamlit.testing.v1 import AppTest
+
+    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+    app.run()
+    assert not app.exception
